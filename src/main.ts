@@ -5,8 +5,8 @@ import "leaflet/dist/leaflet.css";
 import "./style.css";
 
 import "./leafletWorkaround.ts";
-
 import luck from "./luck.ts";
+import { Board } from "./board.ts";
 
 const APP_NAME = "Geocoin Carrier";
 document.title = APP_NAME;
@@ -14,6 +14,11 @@ document.title = APP_NAME;
 interface Location {
   latitude: number;
   longitude: number;
+}
+
+interface Cell {
+  readonly i: number;
+  readonly j: number;
 }
 
 interface Cache {
@@ -24,6 +29,10 @@ const OAKES_CLASSROOM = {
   latitude: 36.98949379578401,
   longitude: -122.06277128548504,
 };
+
+const TILE_DEGREES = 1e-4;
+const TILE_VISIBILITY_RADIUS = 8;
+const CACHE_SPAWN_PROBABILITY = 0.1;
 
 const bus = new EventTarget();
 
@@ -83,22 +92,15 @@ bus.addEventListener("player-moved", () => {
   );
 });
 
-const TILE_DEGREES = 1e-4;
+const board = new Board(TILE_DEGREES, TILE_VISIBILITY_RADIUS);
 
-function spawnCache(i: number, j: number) {
-  const origin = playerLocation;
-  const bounds = leaflet.latLngBounds([
-    [origin.latitude + i * TILE_DEGREES, origin.longitude + j * TILE_DEGREES],
-    [
-      origin.latitude + (i + 1) * TILE_DEGREES,
-      origin.longitude + (j + 1) * TILE_DEGREES,
-    ],
-  ]);
-
+function spawnCache(cell: Cell) {
+  const bounds = board.getCellBounds(cell);
   const cacheZone = leaflet.rectangle(bounds, { color: "black" });
   cacheZone.addTo(map);
 
-  const pointValue = Math.floor(luck([i, j, "initialValue"].toString()) * 100);
+  const key = `${cell.i},${cell.j}`;
+  const pointValue = Math.floor(luck([key, "initialValue"].toString()) * 100);
 
   const cache: Cache = {
     points: pointValue,
@@ -107,7 +109,7 @@ function spawnCache(i: number, j: number) {
   cacheZone.bindPopup(() => {
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
-      <div>There is a cache here at "${i},${j}". It has value <span id="value">${cache.points}</span>.</div>
+      <div>There is a cache here at "${key}". It has value <span id="value">${cache.points}</span>.</div>
       <button id="collect">Collect</button>
       <button id="deposit">Deposit</button>`;
 
@@ -135,13 +137,13 @@ function spawnCache(i: number, j: number) {
   });
 }
 
-const NEIGHBORHOOD_SIZE = 8;
-const CACHE_SPAWN_PROBABILITY = 0.1;
+const nearbyCells = board.getCellsNearPoint(
+  leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
+);
 
-for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-  for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-    if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-      spawnCache(i, j);
-    }
+nearbyCells.forEach((cell) => {
+  const key = `${cell.i},${cell.j}`;
+  if (luck(key) < CACHE_SPAWN_PROBABILITY) {
+    spawnCache(cell);
   }
-}
+});
