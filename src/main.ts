@@ -17,12 +17,17 @@ interface Location {
 }
 
 interface Cell {
-  readonly i: number;
-  readonly j: number;
+  i: number;
+  j: number;
+}
+
+interface Coin {
+  cell: Cell;
+  serial: number;
 }
 
 interface Cache {
-  points: number;
+  coins: Coin[];
 }
 
 const OAKES_CLASSROOM = {
@@ -37,25 +42,23 @@ const CACHE_SPAWN_PROBABILITY = 0.1;
 const bus = new EventTarget();
 
 let playerLocation: Location = OAKES_CLASSROOM;
-let playerPoints: number = 0;
+const playerCoins: Coin[] = [];
 
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
-statusPanel.innerHTML = "0 Points";
+statusPanel.innerHTML = "0 Coins in Inventory";
 
 function collect(cache: Cache) {
-  playerPoints++;
-  cache.points--;
-  bus.dispatchEvent(new Event("points-changed"));
+  playerCoins.push(cache.coins.pop()!);
+  bus.dispatchEvent(new Event("coins-changed"));
 }
 
 function deposit(cache: Cache) {
-  playerPoints--;
-  cache.points++;
-  bus.dispatchEvent(new Event("points-changed"));
+  cache.coins.push(playerCoins.pop()!);
+  bus.dispatchEvent(new Event("coins-changed"));
 }
 
-bus.addEventListener("points-changed", () => {
-  statusPanel.innerHTML = `${playerPoints} Points`;
+bus.addEventListener("coins-changed", () => {
+  reloadCoins();
 });
 
 function _movePlayer(destination: Location) {
@@ -100,41 +103,64 @@ function spawnCache(cell: Cell) {
   cacheZone.addTo(map);
 
   const key = `${cell.i},${cell.j}`;
-  const pointValue = Math.floor(luck([key, "initialValue"].toString()) * 100);
+  const initialCoins = Math.floor(luck([key, "initialValue"].toString()) * 10);
 
   const cache: Cache = {
-    points: pointValue,
+    coins: [],
   };
+
+  for (let s = 0; s <= initialCoins; s++) {
+    const coin: Coin = {
+      cell: cell,
+      serial: s,
+    };
+
+    cache.coins.push(coin);
+  }
 
   cacheZone.bindPopup(() => {
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
-      <div>There is a cache here at "${key}". It has value <span id="value">${cache.points}</span>.</div>
+      <div>There is a cache here at "${key}". It has <span id="value">${cache.coins.length}</span> coins.</div>
       <button id="collect">Collect</button>
       <button id="deposit">Deposit</button>`;
 
     popupDiv
       .querySelector<HTMLButtonElement>("#collect")!
       .addEventListener("click", () => {
-        if (cache.points > 0) {
+        if (cache.coins.length > 0) {
           collect(cache);
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = cache
-            .points.toString();
+            .coins.length.toString();
         }
       });
 
     popupDiv
       .querySelector<HTMLButtonElement>("#deposit")!
       .addEventListener("click", () => {
-        if (playerPoints > 0) {
+        if (playerCoins.length > 0) {
           deposit(cache);
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = cache
-            .points.toString();
+            .coins.length.toString();
         }
       });
 
     return popupDiv;
   });
+}
+
+function reloadCoins() {
+  statusPanel.innerHTML = `${playerCoins.length} Coins in Inventory`;
+
+  const coinList = document.createElement("ul");
+
+  playerCoins.forEach((coin) => {
+    const listItem = document.createElement("li");
+    listItem.textContent = `🪙${coin.cell.i}:${coin.cell.j}#${coin.serial}`;
+    coinList.appendChild(listItem);
+  });
+
+  statusPanel.appendChild(coinList);
 }
 
 const nearbyCells = board.getCellsNearPoint(
