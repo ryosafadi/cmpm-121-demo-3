@@ -44,6 +44,7 @@ const bus = new EventTarget();
 let playerLocation: Location = OAKES_CLASSROOM;
 const playerCoins: Coin[] = [];
 
+const controlPanel = document.querySelector<HTMLDivElement>("#controlPanel")!;
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 statusPanel.innerHTML = "0 Coins in Inventory";
 
@@ -61,10 +62,38 @@ bus.addEventListener("coins-changed", () => {
   reloadCoins();
 });
 
-function _movePlayer(destination: Location) {
+function movePlayer(destination: Location) {
   playerLocation = destination;
   bus.dispatchEvent(new Event("player-moved"));
 }
+
+bus.addEventListener("player-moved", () => {
+  playerMarker.setLatLng(
+    leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
+  );
+});
+
+const movementButtons = [
+  { direction: "⬆️", latitude: TILE_DEGREES, longitude: 0 },
+  { direction: "⬇️", latitude: -TILE_DEGREES, longitude: 0 },
+  { direction: "⬅️", latitude: 0, longitude: -TILE_DEGREES },
+  { direction: "➡️", latitude: 0, longitude: TILE_DEGREES },
+];
+
+movementButtons.forEach(({ direction, latitude, longitude }) => {
+  const button = document.createElement("button");
+  button.innerHTML = direction;
+
+  button.addEventListener("click", () => {
+    const destination: Location = {
+      latitude: playerLocation.latitude + latitude,
+      longitude: playerLocation.longitude + longitude,
+    };
+    movePlayer(destination);
+  });
+
+  controlPanel.append(button);
+});
 
 const map = leaflet.map(document.getElementById("map")!, {
   center: leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
@@ -88,12 +117,6 @@ const playerMarker = leaflet.marker(
 );
 playerMarker.bindTooltip("Your Location");
 playerMarker.addTo(map);
-
-bus.addEventListener("player-moved", () => {
-  playerMarker.setLatLng(
-    leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
-  );
-});
 
 const board = new Board(TILE_DEGREES, TILE_VISIBILITY_RADIUS);
 
