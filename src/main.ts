@@ -26,8 +26,38 @@ interface Coin {
   serial: number;
 }
 
-interface Cache {
+interface Momento<T> {
+  toMomento(): T;
+  fromMomento(momento: T): void;
+}
+
+class Cache implements Momento<string> {
+  cell: Cell;
+  bounds: leaflet.LatLngBounds;
   coins: Coin[];
+
+  constructor(cell: Cell, bounds: leaflet.LatLngBounds) {
+    this.cell = cell;
+    this.bounds = bounds;
+    this.coins = [];
+  }
+
+  toMomento() {
+    const data = {
+      cell: this.cell,
+      bounds: this.bounds,
+      coins: this.coins,
+    };
+
+    return JSON.stringify(data);
+  }
+
+  fromMomento(momento: string) {
+    const data = JSON.parse(momento);
+    this.cell = data.cell;
+    this.bounds = data.bounds;
+    this.coins = data.coins;
+  }
 }
 
 const OAKES_CLASSROOM = {
@@ -43,6 +73,7 @@ const bus = new EventTarget();
 
 let playerLocation: Location = OAKES_CLASSROOM;
 const playerCoins: Coin[] = [];
+const activeCacheZones: leaflet.Rectangle[] = [];
 
 const controlPanel = document.querySelector<HTMLDivElement>("#controlPanel")!;
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
@@ -68,9 +99,12 @@ function movePlayer(destination: Location) {
 }
 
 bus.addEventListener("player-moved", () => {
+  clearCacheZones();
   playerMarker.setLatLng(
     leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
   );
+  map.setView(playerMarker.getLatLng());
+  drawCaches();
 });
 
 const movementButtons = [
@@ -120,17 +154,18 @@ playerMarker.addTo(map);
 
 const board = new Board(TILE_DEGREES, TILE_VISIBILITY_RADIUS);
 
+drawCaches();
+
 function spawnCache(cell: Cell) {
   const bounds = board.getCellBounds(cell);
   const cacheZone = leaflet.rectangle(bounds, { color: "black" });
   cacheZone.addTo(map);
+  activeCacheZones.push(cacheZone);
 
   const key = `${cell.i},${cell.j}`;
   const initialCoins = Math.floor(luck([key, "initialValue"].toString()) * 10);
 
-  const cache: Cache = {
-    coins: [],
-  };
+  const cache = new Cache(cell, bounds);
 
   for (let s = 0; s <= initialCoins; s++) {
     const coin: Coin = {
@@ -172,6 +207,26 @@ function spawnCache(cell: Cell) {
   });
 }
 
+function drawCaches() {
+  const nearbyCells = board.getCellsNearPoint(
+    leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
+  );
+
+  nearbyCells.forEach((cell) => {
+    const key = `${cell.i},${cell.j}`;
+    if (luck(key) < CACHE_SPAWN_PROBABILITY) {
+      spawnCache(cell);
+    }
+  });
+}
+
+function clearCacheZones() {
+  activeCacheZones.forEach((zone) => {
+    zone.removeFrom(map);
+  });
+  activeCacheZones.length = 0;
+}
+
 function reloadCoins() {
   statusPanel.innerHTML = `${playerCoins.length} Coins in Inventory`;
 
@@ -185,14 +240,3 @@ function reloadCoins() {
 
   statusPanel.appendChild(coinList);
 }
-
-const nearbyCells = board.getCellsNearPoint(
-  leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
-);
-
-nearbyCells.forEach((cell) => {
-  const key = `${cell.i},${cell.j}`;
-  if (luck(key) < CACHE_SPAWN_PROBABILITY) {
-    spawnCache(cell);
-  }
-});
