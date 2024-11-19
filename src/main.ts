@@ -77,6 +77,8 @@ let playerLocation: Location = OAKES_CLASSROOM;
 const playerCoins: Coin[] = [];
 const activeCacheZones: leaflet.Rectangle[] = [];
 const cacheMementos: Map<string, string> = new Map();
+let watchId: number | null = null;
+let isWatching = false;
 
 const controlPanel = document.querySelector<HTMLDivElement>("#controlPanel")!;
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
@@ -137,6 +139,48 @@ movementButtons.forEach(({ direction, latitude, longitude }) => {
 
   controlPanel.append(button);
 });
+
+const geolocationButton = document.createElement("button");
+geolocationButton.innerHTML = "🌐";
+geolocationButton.addEventListener("click", () => {
+  if (!isWatching) {
+    watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const destination: Location = { latitude, longitude };
+
+        movePlayer(destination);
+      },
+      (error) => {
+        console.error("Geolocation error:", error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 10000,
+      },
+    );
+
+    geolocationButton.innerHTML = "🛑 Stop Tracking";
+    isWatching = true;
+  } else {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+
+    geolocationButton.innerHTML = "🌐";
+    isWatching = false;
+  }
+});
+controlPanel.append(geolocationButton);
+
+const resetButton = document.createElement("button");
+resetButton.innerHTML = "🚮";
+resetButton.addEventListener("click", () => {
+  reset();
+});
+controlPanel.append(resetButton);
 
 const map = leaflet.map(document.getElementById("map")!, {
   center: leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
@@ -258,4 +302,24 @@ function reloadCoins() {
   });
 
   statusPanel.appendChild(coinList);
+}
+
+function reset() {
+  const confirm = prompt('Type "yes" if you would like to reset the game.');
+
+  if (confirm?.toLowerCase() === "yes") {
+    playerLocation = OAKES_CLASSROOM;
+    playerMarker.setLatLng(
+      leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
+    );
+    map.setView(playerMarker.getLatLng());
+
+    clearCacheZones();
+
+    playerCoins.length = 0;
+    cacheMementos.clear();
+
+    reloadCoins();
+    drawCaches();
+  }
 }
