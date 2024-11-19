@@ -26,23 +26,25 @@ interface Coin {
   serial: number;
 }
 
-interface Momento<T> {
-  toMomento(): T;
-  fromMomento(momento: T): void;
+interface Memento<T> {
+  toMemento(): T;
+  fromMemento(memento: T): void;
 }
 
-class Cache implements Momento<string> {
+class Cache implements Memento<string> {
   cell: Cell;
+  key: string;
   bounds: leaflet.LatLngBounds;
   coins: Coin[];
 
   constructor(cell: Cell, bounds: leaflet.LatLngBounds) {
     this.cell = cell;
+    this.key = `${cell.i},${cell.j}`;
     this.bounds = bounds;
     this.coins = [];
   }
 
-  toMomento() {
+  toMemento() {
     const data = {
       cell: this.cell,
       bounds: this.bounds,
@@ -52,8 +54,8 @@ class Cache implements Momento<string> {
     return JSON.stringify(data);
   }
 
-  fromMomento(momento: string) {
-    const data = JSON.parse(momento);
+  fromMemento(memento: string) {
+    const data = JSON.parse(memento);
     this.cell = data.cell;
     this.bounds = data.bounds;
     this.coins = data.coins;
@@ -74,6 +76,7 @@ const bus = new EventTarget();
 let playerLocation: Location = OAKES_CLASSROOM;
 const playerCoins: Coin[] = [];
 const activeCacheZones: leaflet.Rectangle[] = [];
+const cacheMementos: Map<string, string> = new Map();
 
 const controlPanel = document.querySelector<HTMLDivElement>("#controlPanel")!;
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
@@ -81,17 +84,23 @@ statusPanel.innerHTML = "0 Coins in Inventory";
 
 function collect(cache: Cache) {
   playerCoins.push(cache.coins.pop()!);
-  bus.dispatchEvent(new Event("coins-changed"));
+  bus.dispatchEvent(new CustomEvent("coins-changed", { detail: cache }));
 }
 
 function deposit(cache: Cache) {
   cache.coins.push(playerCoins.pop()!);
-  bus.dispatchEvent(new Event("coins-changed"));
+  bus.dispatchEvent(new CustomEvent("coins-changed", { detail: cache }));
 }
 
-bus.addEventListener("coins-changed", () => {
-  reloadCoins();
-});
+bus.addEventListener(
+  "coins-changed",
+  ((e: CustomEvent) => {
+    const cache = e.detail;
+    console.log(cache);
+    cacheMementos.set(cache.key, cache.toMemento());
+    reloadCoins();
+  }) as EventListener,
+);
 
 function movePlayer(destination: Location) {
   playerLocation = destination;
@@ -162,18 +171,28 @@ function spawnCache(cell: Cell) {
   cacheZone.addTo(map);
   activeCacheZones.push(cacheZone);
 
-  const key = `${cell.i},${cell.j}`;
-  const initialCoins = Math.floor(luck([key, "initialValue"].toString()) * 10);
-
   const cache = new Cache(cell, bounds);
 
-  for (let s = 0; s <= initialCoins; s++) {
-    const coin: Coin = {
-      cell: cell,
-      serial: s,
-    };
+  const key = `${cell.i},${cell.j}`;
+  const memento = cacheMementos.get(key);
 
-    cache.coins.push(coin);
+  if (memento) {
+    cache.fromMemento(memento);
+  } else {
+    const initialCoins = Math.floor(
+      luck([key, "initialValue"].toString()) * 10,
+    );
+
+    for (let s = 0; s <= initialCoins; s++) {
+      const coin: Coin = {
+        cell: cell,
+        serial: s,
+      };
+
+      cache.coins.push(coin);
+    }
+
+    cacheMementos.set(key, cache.toMemento());
   }
 
   cacheZone.bindPopup(() => {
