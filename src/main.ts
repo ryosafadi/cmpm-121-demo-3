@@ -73,16 +73,22 @@ const CACHE_SPAWN_PROBABILITY = 0.1;
 
 const bus = new EventTarget();
 
-let playerLocation: Location = OAKES_CLASSROOM;
-const playerCoins: Coin[] = [];
+let playerLocation: Location = loadLocation() || OAKES_CLASSROOM;
+const playerCoins: Coin[] = loadCoins();
 const activeCacheZones: leaflet.Rectangle[] = [];
-const cacheMementos: Map<string, string> = new Map();
+const cacheMementos: Map<string, string> = new Map(loadCacheData());
+let polyline: leaflet.Polyline | null = null;
+let path: leaflet.LatLng[] = [
+  leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
+];
 let watchId: number | null = null;
 let isWatching = false;
 
 const controlPanel = document.querySelector<HTMLDivElement>("#controlPanel")!;
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 statusPanel.innerHTML = "0 Coins in Inventory";
+
+reloadCoins();
 
 function collect(cache: Cache) {
   playerCoins.push(cache.coins.pop()!);
@@ -101,6 +107,7 @@ bus.addEventListener(
     console.log(cache);
     cacheMementos.set(cache.key, cache.toMemento());
     reloadCoins();
+    saveGame();
   }) as EventListener,
 );
 
@@ -110,12 +117,23 @@ function movePlayer(destination: Location) {
 }
 
 bus.addEventListener("player-moved", () => {
+  path.push(leaflet.latLng(playerLocation.latitude, playerLocation.longitude));
+
+  polyline?.removeFrom(map);
+  polyline = leaflet.polyline(path, {
+    color: "blue",
+    weight: 3,
+    opacity: 0.7,
+  }).addTo(map);
+
   clearCacheZones();
   playerMarker.setLatLng(
     leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
   );
   map.setView(playerMarker.getLatLng());
   drawCaches();
+
+  saveGame();
 });
 
 const movementButtons = [
@@ -304,10 +322,43 @@ function reloadCoins() {
   statusPanel.appendChild(coinList);
 }
 
+function saveGame() {
+  localStorage.setItem("playerLocation", JSON.stringify(playerLocation));
+  localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
+  localStorage.setItem("cacheMementos", JSON.stringify([...cacheMementos]));
+}
+
+function loadLocation(): Location | null {
+  const savedLocation = localStorage.getItem("playerLocation");
+  return savedLocation ? JSON.parse(savedLocation) : null;
+}
+
+function loadCoins() {
+  const savedCoins = localStorage.getItem("playerCoins");
+  return savedCoins ? JSON.parse(savedCoins) : [];
+}
+
+function loadCacheData(): Map<string, string> {
+  const savedCacheData = localStorage.getItem("cacheMementos");
+  if (!savedCacheData) return new Map();
+
+  try {
+    const entries = JSON.parse(savedCacheData);
+    return new Map(entries);
+  } catch (error) {
+    console.error("Failed to parse cache data:", error);
+    return new Map();
+  }
+}
+
 function reset() {
   const confirm = prompt('Type "yes" if you would like to reset the game.');
 
   if (confirm?.toLowerCase() === "yes") {
+    localStorage.removeItem("playerLocation");
+    localStorage.removeItem("playerCoins");
+    localStorage.removeItem("cacheMementos");
+
     playerLocation = OAKES_CLASSROOM;
     playerMarker.setLatLng(
       leaflet.latLng(playerLocation.latitude, playerLocation.longitude),
@@ -318,6 +369,9 @@ function reset() {
 
     playerCoins.length = 0;
     cacheMementos.clear();
+
+    path = [leaflet.latLng(playerLocation.latitude, playerLocation.longitude)];
+    polyline?.removeFrom(map);
 
     reloadCoins();
     drawCaches();
