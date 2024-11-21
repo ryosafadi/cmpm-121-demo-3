@@ -316,6 +316,15 @@ function reloadCoins() {
   playerCoins.forEach((coin) => {
     const listItem = document.createElement("li");
     listItem.textContent = `🪙${coin.cell.i}:${coin.cell.j}#${coin.serial}`;
+
+    listItem.addEventListener("click", () => {
+      const coinLatitude = coin.cell.i * TILE_DEGREES;
+      const coinLongitude = coin.cell.j * TILE_DEGREES;
+
+      map.setView(leaflet.latLng(coinLatitude, coinLongitude));
+    });
+    listItem.style.cursor = "pointer";
+
     coinList.appendChild(listItem);
   });
 
