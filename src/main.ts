@@ -26,12 +26,13 @@ interface Coin {
   serial: number;
 }
 
-interface Memento<T> {
-  toMemento(): T;
-  fromMemento(memento: T): void;
+interface CacheMemento {
+  cell: Cell;
+  bounds: leaflet.LatLngBounds;
+  coins: Coin[];
 }
 
-class Cache implements Memento<string> {
+class Cache {
   cell: Cell;
   key: string;
   bounds: leaflet.LatLngBounds;
@@ -43,22 +44,23 @@ class Cache implements Memento<string> {
     this.bounds = bounds;
     this.coins = [];
   }
+}
 
-  toMemento() {
-    const data = {
-      cell: this.cell,
-      bounds: this.bounds,
-      coins: this.coins,
+class CacheMementoManager {
+  static save(cache: Cache): string {
+    const memento: CacheMemento = {
+      cell: cache.cell,
+      bounds: cache.bounds,
+      coins: cache.coins,
     };
-
-    return JSON.stringify(data);
+    return JSON.stringify(memento);
   }
 
-  fromMemento(memento: string) {
-    const data = JSON.parse(memento);
-    this.cell = data.cell;
-    this.bounds = data.bounds;
-    this.coins = data.coins;
+  static load(cache: Cache, memento: string): void {
+    const data: CacheMemento = JSON.parse(memento);
+    cache.cell = data.cell;
+    cache.bounds = data.bounds;
+    cache.coins = data.coins;
   }
 }
 
@@ -104,8 +106,7 @@ bus.addEventListener(
   "coins-changed",
   ((e: CustomEvent) => {
     const cache = e.detail;
-    console.log(cache);
-    cacheMementos.set(cache.key, cache.toMemento());
+    cacheMementos.set(cache.key, CacheMementoManager.save(cache));
     reloadCoins();
     saveGame();
   }) as EventListener,
@@ -239,7 +240,7 @@ function spawnCache(cell: Cell) {
   const memento = cacheMementos.get(key);
 
   if (memento) {
-    cache.fromMemento(memento);
+    CacheMementoManager.load(cache, memento);
   } else {
     const initialCoins = Math.floor(
       luck([key, "initialValue"].toString()) * 10,
@@ -254,7 +255,7 @@ function spawnCache(cell: Cell) {
       cache.coins.push(coin);
     }
 
-    cacheMementos.set(key, cache.toMemento());
+    cacheMementos.set(key, CacheMementoManager.save(cache));
   }
 
   cacheZone.bindPopup(() => {
